@@ -1,0 +1,22 @@
+references/
+
+### Maven ###
+target/
+
+### Logs ###
+logs/
+
+### IntelliJ IDEA ###
+.idea/
+*.iml
+
+### Eclipse ###
+.settings/
+.classpath
+.project
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store

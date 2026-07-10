@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <property name="LOG_DIR" value="${acme.config.dir:-logs}"/>
+    <springProperty name="LOG_FILE" source="logging.file.name" defaultValue="${LOG_DIR}/acme-todo.log"/>
+    <springProperty name="ROLLING_FILE_NAME_PATTERN"
+                    source="logging.logback.rollingpolicy.file-name-pattern"
+                    defaultValue="${LOG_DIR}/acme-todo-%d{yyyy-MM-dd}.log"/>
+    <springProperty name="MAX_HISTORY"
+                    source="logging.logback.rollingpolicy.max-history"
+                    defaultValue="30"/>
+
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${ROLLING_FILE_NAME_PATTERN}</fileNamePattern>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <logger name="org.acme.todo" level="DEBUG"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

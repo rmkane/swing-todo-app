@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: acme-todo-app
+
+  main:
+    web-application-type: none
+    banner-mode: off
+
+app:
+  database:
+    filename: todo.db
+
+  settings:
+    theme: system
+    confirm-delete: true
+    show-completed: true
+    window-width: 800
+    window-height: 600
+
+logging:
+  file:
+    name: ${acme.config.dir}/acme-todo.log
+  logback:
+    rollingpolicy:
+      file-name-pattern: ${acme.config.dir}/acme-todo-%d{yyyy-MM-dd}.log
+      max-history: 30
+  level:
+    org.acme.todo: DEBUG
