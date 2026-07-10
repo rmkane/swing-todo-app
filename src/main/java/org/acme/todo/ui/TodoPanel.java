@@ -1,13 +1,16 @@
 package org.acme.todo.ui;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -16,9 +19,10 @@ import javax.swing.JTextField;
 
 import org.springframework.context.annotation.Lazy;
 
+import org.acme.todo.core.model.Todo;
+import org.acme.todo.core.model.TodoCategory;
+import org.acme.todo.core.service.TodoService;
 import org.acme.todo.settings.SettingsService;
-import org.acme.todo.todo.Todo;
-import org.acme.todo.todo.TodoService;
 
 @Lazy
 @org.springframework.stereotype.Component
@@ -26,17 +30,22 @@ public class TodoPanel extends JPanel {
 
 	private final TodoService todoService;
 	private final SettingsService settingsService;
+	private final CategoryManagerDialog categoryManagerDialog;
 
 	private final TodoListModel listModel = new TodoListModel();
 	private final JList<Todo> todoList = new JList<>(listModel);
 	private final JTextField descriptionField = new JTextField();
+	private final JComboBox<TodoCategory> categoryField = new JComboBox<>();
 
-	public TodoPanel(TodoService todoService, SettingsService settingsService) {
+	public TodoPanel(TodoService todoService, SettingsService settingsService,
+			CategoryManagerDialog categoryManagerDialog) {
 		this.todoService = todoService;
 		this.settingsService = settingsService;
+		this.categoryManagerDialog = categoryManagerDialog;
 
 		configureLayout();
 		configureActions();
+		reloadCategories();
 		refreshTodos();
 	}
 
@@ -52,13 +61,21 @@ public class TodoPanel extends JPanel {
 
 	private JPanel createEntryPanel() {
 		JButton addButton = new JButton("Add");
+		JButton manageCategoriesButton = new JButton("Categories...");
 
 		addButton.addActionListener(event -> addTodo());
+		manageCategoriesButton.addActionListener(event -> openCategoryManager());
 		descriptionField.addActionListener(event -> addTodo());
+		categoryField.setPrototypeDisplayValue(new TodoCategory(0L, "Long Category Name", "#000000"));
 
 		JPanel panel = new JPanel(new BorderLayout(8, 0));
 		panel.add(descriptionField, BorderLayout.CENTER);
-		panel.add(addButton, BorderLayout.EAST);
+
+		JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		right.add(categoryField);
+		right.add(manageCategoriesButton);
+		right.add(addButton);
+		panel.add(right, BorderLayout.EAST);
 
 		return panel;
 	}
@@ -85,7 +102,13 @@ public class TodoPanel extends JPanel {
 
 	private void addTodo() {
 		runUiAction(() -> {
-			todoService.add(descriptionField.getText());
+			Todo created = todoService.add(descriptionField.getText());
+
+			TodoCategory category = (TodoCategory) categoryField.getSelectedItem();
+			if (category != null) {
+				todoService.setCategories(created.id(), List.of(category.id()));
+			}
+
 			descriptionField.setText("");
 			refreshTodos();
 		});
@@ -142,6 +165,33 @@ public class TodoPanel extends JPanel {
 		refreshTodos();
 	}
 
+	public void reloadCategories() {
+		TodoCategory selected = (TodoCategory) categoryField.getSelectedItem();
+		List<TodoCategory> categories = todoService.findCategories();
+
+		categoryField.removeAllItems();
+		categoryField.addItem(null);
+		for (TodoCategory category : categories) {
+			categoryField.addItem(category);
+		}
+
+		if (selected != null) {
+			for (int i = 1; i < categoryField.getItemCount(); i++) {
+				TodoCategory candidate = categoryField.getItemAt(i);
+				if (candidate != null && candidate.id().equals(selected.id())) {
+					categoryField.setSelectedIndex(i);
+					break;
+				}
+			}
+		}
+	}
+
+	private void openCategoryManager() {
+		categoryManagerDialog.open((java.awt.Frame) javax.swing.SwingUtilities.getWindowAncestor(this));
+		reloadCategories();
+		reloadTodos();
+	}
+
 	private void runUiAction(Runnable action) {
 		try {
 			action.run();
@@ -158,7 +208,7 @@ public class TodoPanel extends JPanel {
 			super.getListCellRendererComponent(list, value, index, selected, focused);
 
 			if (value instanceof Todo todo) {
-				setText(todo.description());
+				setText(buildLabel(todo));
 
 				Font baseFont = getFont();
 				int style = todo.completed() ? Font.ITALIC : Font.PLAIN;
@@ -167,6 +217,43 @@ public class TodoPanel extends JPanel {
 			}
 
 			return this;
+		}
+
+		private String buildLabel(Todo todo) {
+			StringBuilder builder = new StringBuilder("<html>");
+			builder.append(escapeHtml(todo.description()));
+
+			List<TodoCategory> categories = todo.categories() == null ? List.of() : todo.categories();
+			if (!categories.isEmpty()) {
+				builder.append(" <span style='color:#666666'>&middot;</span> ");
+				List<String> tags = new ArrayList<>();
+				for (TodoCategory category : categories) {
+					String color = normalizeHexColor(category.color());
+					tags.add("<span style='color:" + color + ";font-weight:bold'>" + escapeHtml(category.name())
+							+ "</span>");
+				}
+				builder.append(String.join(" ", tags));
+			}
+
+			builder.append("</html>");
+			return builder.toString();
+		}
+
+		private String normalizeHexColor(String color) {
+			if (color == null) {
+				return "#666666";
+			}
+
+			try {
+				Color decoded = Color.decode(color);
+				return String.format("#%02X%02X%02X", decoded.getRed(), decoded.getGreen(), decoded.getBlue());
+			} catch (RuntimeException ignored) {
+				return "#666666";
+			}
+		}
+
+		private String escapeHtml(String value) {
+			return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 		}
 	}
 }

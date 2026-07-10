@@ -5,7 +5,7 @@ import java.util.List;
 
 import javax.swing.AbstractListModel;
 
-import org.acme.todo.todo.Todo;
+import org.acme.todo.core.model.Todo;
 
 public class TodoListModel extends AbstractListModel<Todo> {
 

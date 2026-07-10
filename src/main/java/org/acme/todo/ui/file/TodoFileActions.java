@@ -1,23 +1,26 @@
 package org.acme.todo.ui.file;
 
 import java.awt.Component;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.extern.slf4j.Slf4j;
 
-import org.acme.todo.todo.Todo;
-import org.acme.todo.todo.TodoService;
+import org.acme.todo.core.model.Todo;
+import org.acme.todo.core.model.TodoCategory;
+import org.acme.todo.core.service.TodoService;
 import org.acme.todo.ui.TodoPanel;
 
 @Slf4j
@@ -25,35 +28,41 @@ import org.acme.todo.ui.TodoPanel;
 public class TodoFileActions {
 
 	private final TodoService todoService;
+	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	public TodoFileActions(TodoService todoService) {
 		this.todoService = todoService;
 	}
 
 	public void exportTodos(Component parent) {
-		JFileChooser chooser = createChooser("Export Todos", "todos.csv");
+		JFileChooser chooser = createChooser("Export Todos", "todos.json");
 		if (chooser.showSaveDialog(parent) != JFileChooser.APPROVE_OPTION) {
 			return;
 		}
 
 		Path file = chooser.getSelectedFile().toPath();
 		List<Todo> todos = todoService.findAll();
+		List<TodoCategory> categories = todoService.findCategories();
 
-		try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-			writer.write("description,completed");
-			writer.newLine();
-
-			for (Todo todo : todos) {
-				writer.write(escape(todo.description()));
-				writer.write(',');
-				writer.write(Boolean.toString(todo.completed()));
-				writer.newLine();
+		try {
+			if (file.getParent() != null) {
+				Files.createDirectories(file.getParent());
 			}
 
+			ExportDocument document = new ExportDocument(1, Instant.now().toString(), categories.stream()
+					.map(category -> new ExportCategory(category.id(), category.name(), category.color())).toList(),
+					todos.stream()
+							.map(todo -> new ExportTodo(todo.id(), todo.description(), todo.completed(),
+									todo.createdAt() == null ? null : todo.createdAt().toString(),
+									todo.completedAt() == null ? null : todo.completedAt().toString(),
+									todo.categories().stream().map(TodoCategory::id).toList()))
+							.toList());
+
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), document);
 			log.info("Exported {} todos to {}", todos.size(), file.toAbsolutePath());
 			JOptionPane.showMessageDialog(parent, "Exported " + todos.size() + " todos.", "Export complete",
 					JOptionPane.INFORMATION_MESSAGE);
-		} catch (IOException exception) {
+		} catch (RuntimeException | IOException exception) {
 			log.warn("Failed to export todos to {}", file.toAbsolutePath(), exception);
 			JOptionPane.showMessageDialog(parent, "Could not export todos: " + exception.getMessage(), "Export failed",
 					JOptionPane.ERROR_MESSAGE);
@@ -67,10 +76,10 @@ public class TodoFileActions {
 		}
 
 		Path file = chooser.getSelectedFile().toPath();
-		List<ImportedTodo> imported;
+		ImportDocument imported;
 
 		try {
-			imported = parse(file);
+			imported = objectMapper.readValue(file.toFile(), ImportDocument.class);
 		} catch (IOException exception) {
 			log.warn("Failed to import todos from {}", file.toAbsolutePath(), exception);
 			JOptionPane.showMessageDialog(parent, "Could not import todos: " + exception.getMessage(), "Import failed",
@@ -78,7 +87,10 @@ public class TodoFileActions {
 			return;
 		}
 
-		if (imported.isEmpty()) {
+		List<ImportTodo> todos = imported.todos() == null ? List.of() : imported.todos();
+		List<ImportCategory> categories = imported.categories() == null ? List.of() : imported.categories();
+
+		if (todos.isEmpty()) {
 			JOptionPane.showMessageDialog(parent, "No todos found in selected file.", "Import",
 					JOptionPane.INFORMATION_MESSAGE);
 			return;
@@ -98,19 +110,34 @@ public class TodoFileActions {
 		try {
 			if (replace) {
 				todoService.deleteAll();
+				todoService.deleteAllCategories();
 			}
 
-			for (ImportedTodo row : imported) {
-				Todo created = todoService.add(row.description());
-				if (row.completed()) {
-					todoService.setCompleted(created.id(), true);
+			Map<Long, Long> categoryIdMap = new HashMap<>();
+			for (ImportCategory category : categories) {
+				if (category == null) {
+					continue;
+				}
+
+				TodoCategory resolved = todoService.findOrCreateCategory(category.name(), category.color());
+				if (category.id() != null) {
+					categoryIdMap.put(category.id(), resolved.id());
 				}
 			}
 
+			for (ImportTodo todo : todos) {
+				List<Long> categoryIds = (todo.categoryIds() == null ? List.<Long>of() : todo.categoryIds()).stream()
+						.map(id -> categoryIdMap.getOrDefault(id, id)).distinct().collect(Collectors.toList());
+
+				todoService.addWithMetadata(todo.description(), todo.completed(), parseInstant(todo.createdAt()),
+						parseInstant(todo.completedAt()), categoryIds);
+			}
+
+			todoPanel.reloadCategories();
 			todoPanel.reloadTodos();
-			log.info("Imported {} todos from {} (mode={})", imported.size(), file.toAbsolutePath(),
+			log.info("Imported {} todos from {} (mode={})", todos.size(), file.toAbsolutePath(),
 					replace ? "replace" : "append");
-			JOptionPane.showMessageDialog(parent, "Imported " + imported.size() + " todos.", "Import complete",
+			JOptionPane.showMessageDialog(parent, "Imported " + todos.size() + " todos.", "Import complete",
 					JOptionPane.INFORMATION_MESSAGE);
 		} catch (RuntimeException exception) {
 			log.warn("Import failed for {}", file.toAbsolutePath(), exception);
@@ -122,96 +149,40 @@ public class TodoFileActions {
 	private JFileChooser createChooser(String title, String suggestedName) {
 		JFileChooser chooser = new JFileChooser();
 		chooser.setDialogTitle(title);
-		chooser.setFileFilter(new FileNameExtensionFilter("CSV (*.csv)", "csv"));
+		chooser.setFileFilter(new FileNameExtensionFilter("JSON (*.json)", "json"));
 		if (suggestedName != null) {
 			chooser.setSelectedFile(new java.io.File(suggestedName));
 		}
 		return chooser;
 	}
 
-	private List<ImportedTodo> parse(Path file) throws IOException {
-		List<ImportedTodo> rows = new ArrayList<>();
-
-		try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-			String line;
-			boolean first = true;
-
-			while ((line = reader.readLine()) != null) {
-				if (line.isBlank()) {
-					continue;
-				}
-
-				if (first && line.toLowerCase().startsWith("description,")) {
-					first = false;
-					continue;
-				}
-				first = false;
-
-				String[] parts = splitCsvLine(line);
-				if (parts.length < 1) {
-					continue;
-				}
-
-				String description = unescape(parts[0]).trim();
-				if (description.isEmpty()) {
-					continue;
-				}
-
-				boolean completed = parts.length > 1 && Boolean.parseBoolean(parts[1].trim());
-				rows.add(new ImportedTodo(description, completed));
-			}
+	private Instant parseInstant(String value) {
+		if (value == null || value.isBlank()) {
+			return null;
 		}
 
-		return rows;
+		return Instant.parse(value);
 	}
 
-	private String[] splitCsvLine(String line) {
-		List<String> values = new ArrayList<>();
-		StringBuilder current = new StringBuilder();
-		boolean inQuotes = false;
-
-		for (int i = 0; i < line.length(); i++) {
-			char c = line.charAt(i);
-
-			if (c == '"') {
-				if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-					current.append('"');
-					i++;
-				} else {
-					inQuotes = !inQuotes;
-				}
-				continue;
-			}
-
-			if (c == ',' && !inQuotes) {
-				values.add(current.toString());
-				current.setLength(0);
-				continue;
-			}
-
-			current.append(c);
-		}
-
-		values.add(current.toString());
-		return values.toArray(String[]::new);
+	private record ExportDocument(int version, String exportedAt, List<ExportCategory> categories,
+			List<ExportTodo> todos) {
 	}
 
-	private String escape(String value) {
-		String escaped = value.replace("\"", "\"\"");
-		if (escaped.contains(",") || escaped.contains("\"") || escaped.contains("\n") || escaped.contains("\r")) {
-			return '"' + escaped + '"';
-		}
-		return escaped;
+	private record ExportCategory(Long id, String name, String color) {
 	}
 
-	private String unescape(String value) {
-		String trimmed = value.trim();
-		if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-			trimmed = trimmed.substring(1, trimmed.length() - 1).replace("\"\"", "\"");
-		}
-		return trimmed;
+	private record ExportTodo(Long id, String description, boolean completed, String createdAt, String completedAt,
+			List<Long> categoryIds) {
 	}
 
-	private record ImportedTodo(String description, boolean completed) {
+	private record ImportDocument(int version, String exportedAt, List<ImportCategory> categories,
+			List<ImportTodo> todos) {
+	}
+
+	private record ImportCategory(Long id, String name, String color) {
+	}
+
+	private record ImportTodo(Long id, String description, boolean completed, String createdAt, String completedAt,
+			List<Long> categoryIds) {
 	}
 }
