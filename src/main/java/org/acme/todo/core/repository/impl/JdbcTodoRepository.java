@@ -1,4 +1,4 @@
-package org.acme.todo.core.repository;
+package org.acme.todo.core.repository.impl;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -18,6 +18,8 @@ import org.springframework.stereotype.Repository;
 
 import org.acme.todo.core.model.Todo;
 import org.acme.todo.core.model.TodoCategory;
+import org.acme.todo.core.repository.AbstractJdbcRepository;
+import org.acme.todo.core.repository.TodoRepository;
 
 @Repository
 @DependsOn("databaseInitializer")
