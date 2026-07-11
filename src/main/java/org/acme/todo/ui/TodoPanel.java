@@ -17,11 +17,13 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 
 import org.acme.todo.core.model.Todo;
 import org.acme.todo.core.model.TodoCategory;
 import org.acme.todo.core.service.TodoService;
+import org.acme.todo.events.TodosChangedEvent;
 import org.acme.todo.settings.SettingsService;
 
 @Lazy
@@ -31,6 +33,7 @@ public class TodoPanel extends JPanel {
 	private final TodoService todoService;
 	private final SettingsService settingsService;
 	private final CategoryManagerDialog categoryManagerDialog;
+	private final ApplicationEventPublisher eventPublisher;
 
 	private final TodoListModel listModel = new TodoListModel();
 	private final JList<Todo> todoList = new JList<>(listModel);
@@ -38,10 +41,11 @@ public class TodoPanel extends JPanel {
 	private final JComboBox<TodoCategory> categoryField = new JComboBox<>();
 
 	public TodoPanel(TodoService todoService, SettingsService settingsService,
-			CategoryManagerDialog categoryManagerDialog) {
+			CategoryManagerDialog categoryManagerDialog, ApplicationEventPublisher eventPublisher) {
 		this.todoService = todoService;
 		this.settingsService = settingsService;
 		this.categoryManagerDialog = categoryManagerDialog;
+		this.eventPublisher = eventPublisher;
 
 		configureLayout();
 		configureActions();
@@ -110,7 +114,7 @@ public class TodoPanel extends JPanel {
 			}
 
 			descriptionField.setText("");
-			refreshTodos();
+			eventPublisher.publishEvent(new TodosChangedEvent("todo-add"));
 		});
 	}
 
@@ -123,7 +127,7 @@ public class TodoPanel extends JPanel {
 
 		runUiAction(() -> {
 			todoService.setCompleted(todo.id(), !todo.completed());
-			refreshTodos();
+			eventPublisher.publishEvent(new TodosChangedEvent("todo-toggle-completed"));
 		});
 	}
 
@@ -136,7 +140,7 @@ public class TodoPanel extends JPanel {
 
 		runUiAction(() -> {
 			todoService.delete(todo.id());
-			refreshTodos();
+			eventPublisher.publishEvent(new TodosChangedEvent("todo-delete"));
 		});
 	}
 
@@ -188,8 +192,6 @@ public class TodoPanel extends JPanel {
 
 	private void openCategoryManager() {
 		categoryManagerDialog.open((java.awt.Frame) javax.swing.SwingUtilities.getWindowAncestor(this));
-		reloadCategories();
-		reloadTodos();
 	}
 
 	private void runUiAction(Runnable action) {

@@ -20,17 +20,21 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import org.acme.todo.core.model.TodoCategory;
 import org.acme.todo.core.service.TodoService;
+import org.acme.todo.events.CategoriesChangedEvent;
+import org.acme.todo.events.TodosChangedEvent;
 
 @Lazy
 @Component
 public class CategoryManagerDialog extends JDialog {
 
 	private final TodoService todoService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	private final DefaultListModel<TodoCategory> listModel = new DefaultListModel<>();
 	private final JList<TodoCategory> categoryList = new JList<>(listModel);
@@ -38,9 +42,10 @@ public class CategoryManagerDialog extends JDialog {
 	private final JTextField colorField = new JTextField("#3B82F6", 8);
 	private final JButton updateButton = new JButton("Update Selected");
 
-	public CategoryManagerDialog(TodoService todoService) {
+	public CategoryManagerDialog(TodoService todoService, ApplicationEventPublisher eventPublisher) {
 		super((Frame) null, "Manage Categories", true);
 		this.todoService = todoService;
+		this.eventPublisher = eventPublisher;
 		configureDialog();
 	}
 
@@ -123,6 +128,8 @@ public class CategoryManagerDialog extends JDialog {
 	private void addCategory() {
 		try {
 			todoService.addCategory(nameField.getText(), colorField.getText());
+			eventPublisher.publishEvent(new CategoriesChangedEvent("category-add"));
+			eventPublisher.publishEvent(new TodosChangedEvent("category-add"));
 			resetEditor();
 			reloadCategories();
 		} catch (RuntimeException exception) {
@@ -139,6 +146,8 @@ public class CategoryManagerDialog extends JDialog {
 
 		try {
 			todoService.updateCategory(selected.id(), nameField.getText(), colorField.getText());
+			eventPublisher.publishEvent(new CategoriesChangedEvent("category-update"));
+			eventPublisher.publishEvent(new TodosChangedEvent("category-update"));
 			reloadCategories();
 			selectCategoryById(selected.id());
 		} catch (RuntimeException exception) {
@@ -160,6 +169,8 @@ public class CategoryManagerDialog extends JDialog {
 		}
 
 		todoService.deleteCategory(selected.id());
+		eventPublisher.publishEvent(new CategoriesChangedEvent("category-delete"));
+		eventPublisher.publishEvent(new TodosChangedEvent("category-delete"));
 		reloadCategories();
 		resetEditor();
 	}

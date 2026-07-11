@@ -9,10 +9,10 @@ import javax.swing.JOptionPane;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.acme.todo.ui.SettingsDialog;
-import org.acme.todo.ui.TodoPanel;
 import org.acme.todo.ui.dialog.AboutDialog;
 import org.acme.todo.ui.file.TodoFileActions;
 import org.acme.todo.ui.menu.builder.MenuBarBuilder;
@@ -20,27 +20,19 @@ import org.acme.todo.ui.menu.builder.MenuBarBuilder;
 @Slf4j
 @Lazy
 @Component
+@RequiredArgsConstructor
 public class AppMenuBar {
 
 	private final TodoFileActions todoFileActions;
 	private final SettingsDialog settingsDialog;
 	private final AboutDialog aboutDialog;
-	private final TodoPanel todoPanel;
-
-	public AppMenuBar(TodoFileActions todoFileActions, SettingsDialog settingsDialog, AboutDialog aboutDialog,
-			TodoPanel todoPanel) {
-		this.todoFileActions = todoFileActions;
-		this.settingsDialog = settingsDialog;
-		this.aboutDialog = aboutDialog;
-		this.todoPanel = todoPanel;
-	}
 
 	public void install(JFrame frame) {
 		JMenuBar menuBar = MenuBarBuilder.create().menu("File", file -> file.mnemonic('F')
-				.item("Import Todos...",
-						item -> item.mnemonic('I').onClick(() -> todoFileActions.importTodos(frame, todoPanel)))
+				.item("Import Todos...", item -> item.mnemonic('I').onClick(() -> todoFileActions.importTodos(frame)))
 				.item("Export Todos...", item -> item.mnemonic('E').onClick(() -> todoFileActions.exportTodos(frame)))
-				.separator().item("Preferences...", item -> item.mnemonic('P').onClick(() -> openPreferences(frame)))
+				.separator()
+				.item("Preferences...", item -> item.mnemonic('P').onClick(() -> settingsDialog.open(frame)))
 				.separator().item("Exit",
 						item -> item.mnemonic('X').onClick(
 								() -> frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING)))))
@@ -49,12 +41,6 @@ public class AppMenuBar {
 				.build();
 
 		frame.setJMenuBar(menuBar);
-	}
-
-	private void openPreferences(JFrame frame) {
-		if (settingsDialog.open(frame)) {
-			todoPanel.reloadTodos();
-		}
 	}
 
 	private void openAbout(JFrame frame) {

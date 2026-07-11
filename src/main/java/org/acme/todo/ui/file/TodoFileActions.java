@@ -14,25 +14,27 @@ import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
+import org.springframework.context.ApplicationEventPublisher;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.acme.todo.core.model.Todo;
 import org.acme.todo.core.model.TodoCategory;
 import org.acme.todo.core.service.TodoService;
-import org.acme.todo.ui.TodoPanel;
+import org.acme.todo.events.CategoriesChangedEvent;
+import org.acme.todo.events.TodosChangedEvent;
 
 @Slf4j
+@RequiredArgsConstructor
 @org.springframework.stereotype.Component
 public class TodoFileActions {
 
 	private final TodoService todoService;
-	private final ObjectMapper objectMapper = new ObjectMapper();
-
-	public TodoFileActions(TodoService todoService) {
-		this.todoService = todoService;
-	}
+	private final ApplicationEventPublisher eventPublisher;
+	private final ObjectMapper objectMapper;
 
 	public void exportTodos(Component parent) {
 		JFileChooser chooser = createChooser("Export Todos", "todos.json");
@@ -69,7 +71,7 @@ public class TodoFileActions {
 		}
 	}
 
-	public void importTodos(Component parent, TodoPanel todoPanel) {
+	public void importTodos(Component parent) {
 		JFileChooser chooser = createChooser("Import Todos", null);
 		if (chooser.showOpenDialog(parent) != JFileChooser.APPROVE_OPTION) {
 			return;
@@ -133,8 +135,8 @@ public class TodoFileActions {
 						parseInstant(todo.completedAt()), categoryIds);
 			}
 
-			todoPanel.reloadCategories();
-			todoPanel.reloadTodos();
+			eventPublisher.publishEvent(new CategoriesChangedEvent("todo-import"));
+			eventPublisher.publishEvent(new TodosChangedEvent("todo-import"));
 			log.info("Imported {} todos from {} (mode={})", todos.size(), file.toAbsolutePath(),
 					replace ? "replace" : "append");
 			JOptionPane.showMessageDialog(parent, "Imported " + todos.size() + " todos.", "Import complete",

@@ -6,10 +6,10 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 
-public final class LookAndFeelSupport {
+import lombok.experimental.UtilityClass;
 
-	private LookAndFeelSupport() {
-	}
+@UtilityClass
+public class LookAndFeelSupport {
 
 	public static void apply(String themeName) {
 		String normalized = normalizeTheme(themeName);

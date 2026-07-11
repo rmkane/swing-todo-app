@@ -16,9 +16,11 @@ import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import org.acme.todo.events.SettingsChangedEvent;
 import org.acme.todo.settings.AppSettings;
 import org.acme.todo.settings.SettingsService;
 import org.acme.todo.ui.theme.LookAndFeelSupport;
@@ -28,7 +30,7 @@ import org.acme.todo.ui.theme.LookAndFeelSupport;
 public class SettingsDialog extends JDialog {
 
 	private final SettingsService settingsService;
-	private boolean settingsSaved;
+	private final ApplicationEventPublisher eventPublisher;
 
 	private final JComboBox<String> themeField = new JComboBox<>(new String[]{"system", "light", "dark"});
 
@@ -40,20 +42,19 @@ public class SettingsDialog extends JDialog {
 
 	private final JSpinner windowHeightField = new JSpinner(new SpinnerNumberModel(600, 300, 3000, 25));
 
-	public SettingsDialog(SettingsService settingsService) {
+	public SettingsDialog(SettingsService settingsService, ApplicationEventPublisher eventPublisher) {
 		super((Frame) null, "Settings", true);
 
 		this.settingsService = settingsService;
+		this.eventPublisher = eventPublisher;
 
 		configureDialog();
 	}
 
-	public boolean open(Frame owner) {
-		settingsSaved = false;
+	public void open(Frame owner) {
 		setLocationRelativeTo(owner);
 		loadSettings();
 		setVisible(true);
-		return settingsSaved;
 	}
 
 	private void configureDialog() {
@@ -88,10 +89,7 @@ public class SettingsDialog extends JDialog {
 		JButton cancelButton = new JButton("Cancel");
 		JButton saveButton = new JButton("Save");
 
-		cancelButton.addActionListener(event -> {
-			settingsSaved = false;
-			setVisible(false);
-		});
+		cancelButton.addActionListener(event -> setVisible(false));
 		saveButton.addActionListener(event -> saveSettings());
 
 		JPanel panel = new JPanel();
@@ -140,7 +138,7 @@ public class SettingsDialog extends JDialog {
 			settingsService.save(settings);
 			LookAndFeelSupport.apply(settings.theme());
 			LookAndFeelSupport.refreshAllWindows();
-			settingsSaved = true;
+			eventPublisher.publishEvent(new SettingsChangedEvent(settings));
 			setVisible(false);
 		} catch (RuntimeException exception) {
 			JOptionPane.showMessageDialog(this, exception.getMessage(), "Could not save settings",

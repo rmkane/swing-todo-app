@@ -7,10 +7,10 @@ import java.util.concurrent.TimeUnit;
 
 import com.formdev.flatlaf.util.SystemInfo;
 
-public final class SystemTheme {
+import lombok.experimental.UtilityClass;
 
-	private SystemTheme() {
-	}
+@UtilityClass
+public class SystemTheme {
 
 	public static boolean isOsDarkTheme() {
 		if (SystemInfo.isMacOS) {

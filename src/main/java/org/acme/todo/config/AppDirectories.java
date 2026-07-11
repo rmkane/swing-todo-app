@@ -5,12 +5,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
-public final class AppDirectories {
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class AppDirectories {
 
 	private static final String APP_DIRECTORY_NAME = "ACME Todo";
-
-	private AppDirectories() {
-	}
 
 	public static Path resolveConfigDirectory() {
 		String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);

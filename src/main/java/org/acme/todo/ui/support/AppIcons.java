@@ -11,14 +11,14 @@ import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 
-public final class AppIcons {
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class AppIcons {
 
 	private static final int[] SIZES = {16, 32, 48, 64, 128, 256};
 	private static final int[] DIALOG_ICON_SIZES = {128, 256, 64, 48, 32, 16};
 	private static final String ICON_PATH_FORMAT = "/icons/icon-%d.png";
-
-	private AppIcons() {
-	}
 
 	public static Icon dialogIcon() {
 		for (int size : DIALOG_ICON_SIZES) {
