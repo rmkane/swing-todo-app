@@ -21,8 +21,14 @@ public class AboutDialog {
 	private static final String APP_DESCRIPTION = "A desktop app for managing your todo list.";
 
 	public void open(Window parent) {
-		String body = "<html><b>" + APP_NAME + "</b><br>Version: " + version() + "<br><br>" + APP_DESCRIPTION
-				+ "</html>";
+		String body = """
+				<html>
+					<h1>%s</h1>
+					<p>Version: %s</p>
+					<br>
+					<p>%s</p>
+				</html>
+				""".formatted(APP_NAME, version(), APP_DESCRIPTION);
 
 		JLabel message = new JLabel(body);
 		message.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));

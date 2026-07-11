@@ -41,7 +41,7 @@ public class AppIcons {
 		if (Taskbar.isTaskbarSupported()) {
 			Taskbar taskbar = Taskbar.getTaskbar();
 			if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
-				taskbar.setIconImage(images.get(images.size() - 1));
+				taskbar.setIconImage(images.getLast());
 			}
 		}
 	}

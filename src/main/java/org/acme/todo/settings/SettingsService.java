@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import org.acme.todo.config.AppProperties;
@@ -22,7 +23,10 @@ import org.acme.todo.config.AppProperties;
 public class SettingsService {
 
 	private final AppProperties appProperties;
+
+	@Getter
 	private final Path settingsFile;
+
 	private final Yaml yaml;
 
 	public SettingsService(AppProperties appProperties, Path configDirectory) {
@@ -50,10 +54,6 @@ public class SettingsService {
 
 		Map<String, Object> document = createDocument(settings);
 		writeAtomically(document);
-	}
-
-	public Path getSettingsFile() {
-		return settingsFile;
 	}
 
 	private void updateRuntimeSettings(AppSettings newSettings) {
