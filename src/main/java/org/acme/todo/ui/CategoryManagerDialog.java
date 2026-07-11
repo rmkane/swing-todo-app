@@ -7,6 +7,7 @@ import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.Serial;
 import java.util.List;
 
 import javax.swing.DefaultListModel;
@@ -32,6 +33,9 @@ import org.acme.todo.events.TodosChangedEvent;
 @Lazy
 @Component
 public class CategoryManagerDialog extends JDialog {
+
+	@Serial
+	private static final long serialVersionUID = -50050779162891512L;
 
 	private final TodoService todoService;
 	private final ApplicationEventPublisher eventPublisher;

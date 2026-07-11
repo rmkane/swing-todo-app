@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +30,9 @@ import org.acme.todo.settings.SettingsService;
 @Lazy
 @org.springframework.stereotype.Component
 public class TodoPanel extends JPanel {
+
+	@Serial
+	private static final long serialVersionUID = 5255332170132990774L;
 
 	private final TodoService todoService;
 	private final SettingsService settingsService;

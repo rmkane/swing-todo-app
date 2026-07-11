@@ -5,6 +5,7 @@ import java.awt.Frame;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.io.Serial;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -28,6 +29,9 @@ import org.acme.todo.ui.theme.LookAndFeelSupport;
 @Lazy
 @Component
 public class SettingsDialog extends JDialog {
+
+	@Serial
+	private static final long serialVersionUID = -9089181315923426199L;
 
 	private final SettingsService settingsService;
 	private final ApplicationEventPublisher eventPublisher;

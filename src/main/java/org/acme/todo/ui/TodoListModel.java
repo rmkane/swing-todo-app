@@ -1,5 +1,6 @@
 package org.acme.todo.ui;
 
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,6 +9,9 @@ import javax.swing.AbstractListModel;
 import org.acme.todo.core.model.Todo;
 
 public class TodoListModel extends AbstractListModel<Todo> {
+
+	@Serial
+	private static final long serialVersionUID = 7097178925642507258L;
 
 	private final List<Todo> todos = new ArrayList<>();
 

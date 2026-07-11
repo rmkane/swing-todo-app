@@ -4,6 +4,7 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.Serial;
 
 import javax.swing.JFrame;
 
@@ -21,6 +22,9 @@ import org.acme.todo.ui.support.AppIcons;
 @Lazy
 @Component
 public class MainFrame extends JFrame {
+
+	@Serial
+	private static final long serialVersionUID = -3704564258267667033L;
 
 	private static final int MIN_WINDOW_WIDTH = 400;
 	private static final int MIN_WINDOW_HEIGHT = 300;
