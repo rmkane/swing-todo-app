@@ -40,8 +40,7 @@ public class AppMenuBar {
 				.item("Import Todos...",
 						item -> item.mnemonic('I').onClick(() -> todoFileActions.importTodos(frame, todoPanel)))
 				.item("Export Todos...", item -> item.mnemonic('E').onClick(() -> todoFileActions.exportTodos(frame)))
-				.separator()
-				.item("Preferences...", item -> item.mnemonic('P').onClick(() -> settingsDialog.open(frame)))
+				.separator().item("Preferences...", item -> item.mnemonic('P').onClick(() -> openPreferences(frame)))
 				.separator().item("Exit",
 						item -> item.mnemonic('X').onClick(
 								() -> frame.dispatchEvent(new WindowEvent(frame, WindowEvent.WINDOW_CLOSING)))))
@@ -50,6 +49,12 @@ public class AppMenuBar {
 				.build();
 
 		frame.setJMenuBar(menuBar);
+	}
+
+	private void openPreferences(JFrame frame) {
+		if (settingsDialog.open(frame)) {
+			todoPanel.reloadTodos();
+		}
 	}
 
 	private void openAbout(JFrame frame) {

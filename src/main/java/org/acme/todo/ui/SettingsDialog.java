@@ -28,6 +28,7 @@ import org.acme.todo.ui.theme.LookAndFeelSupport;
 public class SettingsDialog extends JDialog {
 
 	private final SettingsService settingsService;
+	private boolean settingsSaved;
 
 	private final JComboBox<String> themeField = new JComboBox<>(new String[]{"system", "light", "dark"});
 
@@ -47,10 +48,12 @@ public class SettingsDialog extends JDialog {
 		configureDialog();
 	}
 
-	public void open(Frame owner) {
+	public boolean open(Frame owner) {
+		settingsSaved = false;
 		setLocationRelativeTo(owner);
 		loadSettings();
 		setVisible(true);
+		return settingsSaved;
 	}
 
 	private void configureDialog() {
@@ -85,7 +88,10 @@ public class SettingsDialog extends JDialog {
 		JButton cancelButton = new JButton("Cancel");
 		JButton saveButton = new JButton("Save");
 
-		cancelButton.addActionListener(event -> setVisible(false));
+		cancelButton.addActionListener(event -> {
+			settingsSaved = false;
+			setVisible(false);
+		});
 		saveButton.addActionListener(event -> saveSettings());
 
 		JPanel panel = new JPanel();
@@ -134,6 +140,7 @@ public class SettingsDialog extends JDialog {
 			settingsService.save(settings);
 			LookAndFeelSupport.apply(settings.theme());
 			LookAndFeelSupport.refreshAllWindows();
+			settingsSaved = true;
 			setVisible(false);
 		} catch (RuntimeException exception) {
 			JOptionPane.showMessageDialog(this, exception.getMessage(), "Could not save settings",
