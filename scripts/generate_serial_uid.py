@@ -24,6 +24,10 @@ Implementation notes:
 - Existing `import java.io.Serial;` declarations are left untouched.
 - The generated field is formatted with one blank line after the type's
   opening brace and one blank line before the next field or method.
+- While the source is temporarily patched for compilation, a sibling
+  backup (<name>.serialver.bak) exists on disk. It is removed after the
+  original source is restored; if the script is killed hard, the backup
+  survives for manual recovery.
 
 Future direction:
 - Convert this standalone script into a uv-managed Python project suitable
@@ -42,10 +46,13 @@ Examples:
         src/main/java/org/acme/Foo.java \
         --compile-command "./mvnw -q -DskipTests compile"
 
+    # Gradle: skip Maven dependency resolution and supply the classpath
     python generate_serial_uid.py \
         src/main/java/org/acme/Foo.java \
         --classes-dir build/classes/java/main \
-        --compile-command "./gradlew classes"
+        --compile-command "./gradlew classes" \
+        --classpath-strategy classes-only \
+        --extra-classpath "$(./gradlew -q printRuntimeClasspath)"
 """
 
 from __future__ import annotations
@@ -54,24 +61,27 @@ import argparse
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
+from typing import Iterator
 
 
 SERIAL_IMPORT = "import java.io.Serial;"
 
 # Matches an optional @Serial annotation immediately preceding serialVersionUID.
+# Modifiers are accepted in any order (e.g. "static final long" or
+# "final static long"), since a strict order would silently fail to match and
+# serialver would then just echo the existing uid back.
 SERIAL_FIELD_RE = re.compile(
     r"""
     (?P<indent>^[ \t]*)
     (?:@Serial[ \t]*\r?\n[ \t]*)?
-    (?:
-        private|protected|public
-    )?
-    [ \t]*
-    static[ \t]+final[ \t]+long[ \t]+serialVersionUID
+    (?:(?:private|protected|public|static|final|transient)[ \t]+)+
+    long[ \t]+serialVersionUID
     [ \t]*=[ \t]*
     [+-]?\d+[lL]
     [ \t]*;
@@ -146,6 +156,30 @@ def parse_args() -> argparse.Namespace:
         help='Command used to compile the project. Default: "mvn -q -DskipTests compile".',
     )
     parser.add_argument(
+        "--skip-compile",
+        action="store_true",
+        help=(
+            "Do not compile; assume the classes directory is already up to date "
+            "and was built WITHOUT an explicit serialVersionUID on the target class."
+        ),
+    )
+    parser.add_argument(
+        "--classpath-strategy",
+        choices=("maven", "classes-only"),
+        default="maven",
+        help=(
+            'How to assemble the serialver classpath. "maven" (default) resolves '
+            'dependencies via dependency:build-classpath; "classes-only" uses just '
+            "the classes directory plus --extra-classpath. Use classes-only for "
+            "Gradle or other non-Maven builds."
+        ),
+    )
+    parser.add_argument(
+        "--extra-classpath",
+        default="",
+        help="Additional classpath entries appended to the serialver classpath.",
+    )
+    parser.add_argument(
         "--serialver",
         default="serialver",
         help='serialver executable. Default: "serialver".',
@@ -164,6 +198,23 @@ def parse_args() -> argparse.Namespace:
 
 def detect_newline(text: str) -> str:
     return "\r\n" if "\r\n" in text else "\n"
+
+
+def resolve_executable(name: str) -> str:
+    """
+    Resolve an executable name via PATH, failing fast with a helpful message.
+    Explicit paths (containing a separator) are returned as-is.
+    """
+    if os.sep in name or (os.altsep and os.altsep in name):
+        return name
+
+    resolved = shutil.which(name)
+    if resolved is None:
+        raise SerialUidError(
+            f"'{name}' was not found on PATH. "
+            "It ships with the JDK; check that JAVA_HOME/bin is on PATH."
+        )
+    return resolved
 
 
 def infer_class_name(source_path: Path, source: str) -> str:
@@ -196,8 +247,13 @@ def remove_unused_serial_import(source: str) -> str:
     return pattern.sub("", source, count=1)
 
 
+def split_command(command: str) -> list[str]:
+    # POSIX splitting rules mangle Windows paths (backslashes, drive letters).
+    return shlex.split(command, posix=(os.name != "nt"))
+
+
 def run_command(command: str, cwd: Path) -> None:
-    args = shlex.split(command)
+    args = split_command(command)
     if not args:
         raise SerialUidError("Compile command is empty.")
 
@@ -213,12 +269,18 @@ def detect_maven_command(project_dir: Path) -> list[str]:
     if wrapper.is_file():
         return [str(wrapper)]
 
-    return ["mvn"]
+    mvn = shutil.which("mvn")
+    if mvn is None:
+        raise SerialUidError(
+            "Neither a Maven wrapper (mvnw) nor 'mvn' on PATH was found. "
+            "For non-Maven builds, use --classpath-strategy classes-only."
+        )
+    return [mvn]
 
 
-def build_maven_classpath(project_dir: Path, classes_dir: Path) -> str:
+def build_maven_classpath(project_dir: Path) -> str:
     """
-    Build the classpath needed by serialver.
+    Resolve the Maven compile-scope dependency classpath.
 
     serialver loads the target class reflectively, so referenced dependency
     types must also be available.
@@ -252,15 +314,39 @@ def build_maven_classpath(project_dir: Path, classes_dir: Path) -> str:
                 + (f": {details}" if details else "")
             )
 
-        dependency_classpath = output_file.read_text(encoding="utf-8").strip()
+        return output_file.read_text(encoding="utf-8").strip()
     finally:
         output_file.unlink(missing_ok=True)
 
+
+def resolve_classpath(
+    strategy: str,
+    extra_classpath: str,
+    project_dir: Path,
+    classes_dir: Path,
+) -> str:
     entries = [str(classes_dir)]
-    if dependency_classpath:
-        entries.append(dependency_classpath)
+
+    if strategy == "maven":
+        dependency_classpath = build_maven_classpath(project_dir)
+        if dependency_classpath:
+            entries.append(dependency_classpath)
+
+    if extra_classpath:
+        entries.append(extra_classpath)
 
     return os.pathsep.join(entries)
+
+
+def assert_class_compiled(classes_dir: Path, class_name: str) -> None:
+    """Fail with a direct message instead of serialver's opaque one."""
+    relative = Path(*class_name.split(".")).with_suffix(".class")
+    class_file = classes_dir / relative
+    if not class_file.is_file():
+        raise SerialUidError(
+            f"Compiled class not found: {class_file}. "
+            "Check --classes-dir, --class-name, and the compile command."
+        )
 
 
 def run_serialver(
@@ -291,13 +377,35 @@ def run_serialver(
 
     output = result.stdout.strip()
     match = re.search(
-        r"serialVersionUID\s*=\s*(?P<uid>[+-]?\d+[lL])\s*;",
+        r"serialVersionUID\s*=\s*(?P<uid>[+-]?\d+)[lL]\s*;",
         output,
     )
     if not match:
         raise SerialUidError(f"Could not parse serialver output: {output}")
 
-    return match.group("uid").upper().replace("LL", "L")
+    return match.group("uid") + "L"
+
+
+@contextmanager
+def temporarily_patched_source(
+    source_path: Path,
+    patched_source: str,
+    original_source: str,
+) -> Iterator[None]:
+    """
+    Swap in the patched source for the duration of the block, always restoring
+    the original afterwards. A sibling .serialver.bak file exists while the
+    swap is active so a hard kill (SIGKILL, power loss) leaves a recovery copy.
+    """
+    backup_path = source_path.with_name(source_path.name + ".serialver.bak")
+    backup_path.write_text(original_source, encoding="utf-8")
+
+    try:
+        source_path.write_text(patched_source, encoding="utf-8")
+        yield
+    finally:
+        source_path.write_text(original_source, encoding="utf-8")
+        backup_path.unlink(missing_ok=True)
 
 
 def ensure_serial_import(source: str, newline: str) -> str:
@@ -426,6 +534,8 @@ def insert_serial_field(source: str, uid: str, newline: str) -> str:
 
 
 def replace_or_insert_serial_field(source: str, uid: str, newline: str) -> str:
+    # Note: an existing field is normalized to "private static final",
+    # regardless of its original visibility.
     replacement = (
         r"\g<indent>@Serial"
         + newline
@@ -465,26 +575,50 @@ def main() -> int:
     temporary_source, had_existing_uid = remove_serial_field(original_source)
     temporary_source = remove_unused_serial_import(temporary_source)
 
-    try:
-        source_path.write_text(temporary_source, encoding="utf-8")
-
-        print(f"Compiling {class_name} without an explicit serialVersionUID...")
-        run_command(args.compile_command, project_dir)
-
-        classpath = build_maven_classpath(project_dir, classes_dir)
-        print("Running serialver with the Maven compile classpath...")
-        uid = run_serialver(
-            executable=args.serialver,
-            classpath=classpath,
-            class_name=class_name,
-            cwd=project_dir,
+    if args.skip_compile and had_existing_uid:
+        print(
+            "warning: --skip-compile with an existing serialVersionUID: the "
+            "compiled class likely embeds the current uid, so serialver will "
+            "just echo it back.",
+            file=sys.stderr,
         )
+
+    try:
+        serialver_executable = resolve_executable(args.serialver)
+
+        # Only patch the source on disk when a compile actually reads it.
+        patch_context = (
+            nullcontext()
+            if args.skip_compile
+            else temporarily_patched_source(
+                source_path, temporary_source, original_source
+            )
+        )
+
+        with patch_context:
+            if not args.skip_compile:
+                print(f"Compiling {class_name} without an explicit serialVersionUID...")
+                run_command(args.compile_command, project_dir)
+
+            assert_class_compiled(classes_dir, class_name)
+
+            classpath = resolve_classpath(
+                strategy=args.classpath_strategy,
+                extra_classpath=args.extra_classpath,
+                project_dir=project_dir,
+                classes_dir=classes_dir,
+            )
+
+            print("Running serialver...")
+            uid = run_serialver(
+                executable=serialver_executable,
+                classpath=classpath,
+                class_name=class_name,
+                cwd=project_dir,
+            )
     except (OSError, SerialUidError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    finally:
-        # Always restore the user's original source before applying the final patch.
-        source_path.write_text(original_source, encoding="utf-8")
 
     updated_source = ensure_serial_import(original_source, newline)
     updated_source = replace_or_insert_serial_field(updated_source, uid, newline)
